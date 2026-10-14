@@ -17,9 +17,9 @@ const appState = {
       id: 1,
       title: "Coastal Marine Cleanup Drive",
       date: "Saturday, Oct 24, 2026 | 08:30 AM",
-      location: "Ocean Beach & Pier, San Francisco, CA",
+      location: "Juhu Beach, Koliwada, Mumbai, Maharashtra",
       slots: 14,
-      image: "https://images.unsplash.com/photo-1618477461853-cf6ed80faba5?auto=format&fit=crop&w=600&q=80",
+      image: "https://images.mid-day.com/images/images/2023/may/jihubeachleanupg3.jpg",
       rsvpConfirmed: false
     },
     {
