@@ -19,7 +19,7 @@ const appState = {
       date: "Saturday, Oct 24, 2026 | 08:30 AM",
       location: "Juhu Beach, Koliwada, Mumbai, Maharashtra",
       slots: 14,
-      image: "https://media.river-cleanup.org/17042/conversions/20240609_081132-responsive.jpg",
+      image: "https://images.unsplash.com/photo-1610093703375-6d8fd641294b?fm=jpg&q=60&w=3000&ixlib=rb-4.0.3&ixid=M3wxMjA3fDB8MHxzZWFyY2h8NHx8YmVhY2glMjBjbGVhbnVwfGVufDB8fDB8fHww",
       rsvpConfirmed: false
     },
     {
