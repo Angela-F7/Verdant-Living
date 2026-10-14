@@ -4,6 +4,8 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Verdant Living | Multi-Faceted Eco-Lifestyle Marketplace & Circular Waste Hub</title>
+  <link rel="manifest" href="manifest.json">
+  <meta name="theme-color" content="#1f4d3a">
   <meta name="description" content="Verdant Living is a circular waste platform and eco-lifestyle marketplace. Shop upcycled goods, log home compost weight for free rewards, trade back old gear, and join community drives.">
   
   <!-- Google Fonts -->
@@ -974,5 +976,10 @@
 
   <!-- Custom JavaScript -->
   <script src="app.js"></script>
+  <script>
+  if ("serviceWorker" in navigator) {
+    navigator.serviceWorker.register("sw.js");
+  }
+</script>
 </body>
 </html>
