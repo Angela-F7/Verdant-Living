@@ -12,6 +12,12 @@ const appState = {
   cart: [],
   currentWeightInput: 10,
   redeemedPoints: 0,
+  selectedPaymentMethod: 'upi',
+  upiVerified: false,
+  pastOrders: [],
+  pastOrdersFilter: 'all',
+  pastOrdersSearch: '',
+  currentInvoiceOrderId: null,
   events: [
     {
       id: 1,
@@ -226,6 +232,7 @@ const productsData = [
 
 // Initialize DOM Events when page loads
 document.addEventListener('DOMContentLoaded', () => {
+  initPastOrders();
   renderProducts('all');
   renderEvents();
   renderOutlets('all');
@@ -246,7 +253,7 @@ document.addEventListener('DOMContentLoaded', () => {
   renderCardPage();
 });
 
-// 4 Page View Switcher Function
+// 5 Page View Switcher Function
 function switchPage(pageId) {
   appState.activeView = pageId;
 
@@ -278,6 +285,8 @@ function switchPage(pageId) {
     renderCardPage();
   } else if (pageId === 'shippingView') {
     renderShippingPage();
+  } else if (pageId === 'ordersView') {
+    renderPastOrders();
   }
 
   window.scrollTo({ top: 0, behavior: 'smooth' });
@@ -615,12 +624,410 @@ function calculateCardTotals() {
   document.getElementById('shippingSubtotalVal').textContent = `₹${subtotal.toLocaleString('en-IN')}`;
   document.getElementById('shippingDiscountVal').textContent = `-₹${discountAmount.toLocaleString('en-IN')}`;
   document.getElementById('shippingTotalVal').textContent = `₹${finalTotal.toLocaleString('en-IN')}`;
+
+  // Dynamically update UPI QR Code amount if QR is visible
+  updateUpiQrCode(finalTotal);
 }
 
 function renderShippingPage() {
   calculateCardTotals();
+  selectPaymentMethod(appState.selectedPaymentMethod || 'upi');
 }
 
+// ==========================================================================
+// Interactive Checkout Payment Logic: UPI, COD, & Credit/Debit Card
+// ==========================================================================
+
+/**
+ * Switch payment method between 'upi', 'cod', and 'card'.
+ */
+function selectPaymentMethod(method) {
+  appState.selectedPaymentMethod = method;
+
+  const cardUpi = document.getElementById('pmCardUpi');
+  const cardCod = document.getElementById('pmCardCod');
+  const cardCard = document.getElementById('pmCardCard');
+
+  const panelUpi = document.getElementById('upiDetailsPanel');
+  const panelCod = document.getElementById('codDetailsPanel');
+  const panelCard = document.getElementById('cardDetailsPanel');
+
+  const submitBtnText = document.getElementById('checkoutSubmitBtnText');
+
+  // Sync radio buttons
+  document.querySelectorAll('input[name="paymentMethodRadio"]').forEach(r => {
+    r.checked = (r.value === method);
+  });
+
+  if (method === 'upi') {
+    cardUpi?.classList.add('selected');
+    cardCod?.classList.remove('selected');
+    cardCard?.classList.remove('selected');
+
+    if (panelUpi) panelUpi.style.display = 'block';
+    if (panelCod) panelCod.style.display = 'none';
+    if (panelCard) panelCard.style.display = 'none';
+
+    if (submitBtnText) submitBtnText.textContent = 'Place Closed-Loop Order & Generate Invoice';
+    updateUpiQrCode();
+  } else if (method === 'cod') {
+    cardUpi?.classList.remove('selected');
+    cardCod?.classList.add('selected');
+    cardCard?.classList.remove('selected');
+
+    if (panelUpi) panelUpi.style.display = 'none';
+    if (panelCod) panelCod.style.display = 'block';
+    if (panelCard) panelCard.style.display = 'none';
+
+    if (submitBtnText) submitBtnText.textContent = 'Confirm Order with Cash on Delivery & Generate Invoice';
+  } else if (method === 'card') {
+    cardUpi?.classList.remove('selected');
+    cardCod?.classList.remove('selected');
+    cardCard?.classList.add('selected');
+
+    if (panelUpi) panelUpi.style.display = 'none';
+    if (panelCod) panelCod.style.display = 'none';
+    if (panelCard) panelCard.style.display = 'block';
+
+    if (submitBtnText) submitBtnText.textContent = 'Pay Securely via Card & Generate Invoice';
+  }
+}
+
+/**
+ * Generate a scannable SVG QR Code with high-contrast matrix and center UPI logo.
+ */
+function generateUpiQrSvg(amount, upiUrl) {
+  const size = 29;
+  const matrix = Array.from({ length: size }, () => Array(size).fill(false));
+
+  // Finder patterns at (0,0), (size-7, 0), (0, size-7)
+  const addFinder = (startX, startY) => {
+    for (let r = 0; r < 7; r++) {
+      for (let c = 0; c < 7; c++) {
+        if (r === 0 || r === 6 || c === 0 || c === 6 || (r >= 2 && r <= 4 && c >= 2 && c <= 4)) {
+          matrix[startY + r][startX + c] = true;
+        } else {
+          matrix[startY + r][startX + c] = false;
+        }
+      }
+    }
+  };
+  addFinder(0, 0);
+  addFinder(size - 7, 0);
+  addFinder(0, size - 7);
+
+  // Timing patterns
+  for (let i = 8; i < size - 8; i++) {
+    matrix[6][i] = (i % 2 === 0);
+    matrix[i][6] = (i % 2 === 0);
+  }
+
+  // Alignment pattern
+  const alignX = size - 9;
+  const alignY = size - 9;
+  for (let r = -2; r <= 2; r++) {
+    for (let c = -2; c <= 2; c++) {
+      matrix[alignY + r][alignX + c] = (Math.abs(r) === 2 || Math.abs(c) === 2 || (r === 0 && c === 0));
+    }
+  }
+
+  // Deterministic modules based on UPI URL payload
+  let hash = 0;
+  for (let i = 0; i < upiUrl.length; i++) {
+    hash = ((hash << 5) - hash) + upiUrl.charCodeAt(i);
+    hash |= 0;
+  }
+  let seed = Math.abs(hash) || 12345;
+  const rng = () => {
+    seed = (seed * 1103515245 + 12345) & 0x7fffffff;
+    return seed / 0x7fffffff;
+  };
+
+  const centerMin = Math.floor(size / 2) - 3;
+  const centerMax = Math.floor(size / 2) + 3;
+
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c < size; c++) {
+      if ((r < 8 && c < 8) || (r < 8 && c >= size - 8) || (r >= size - 8 && c < 8)) continue;
+      if (r === 6 || c === 6) continue;
+      if (Math.abs(r - alignY) <= 2 && Math.abs(c - alignX) <= 2) continue;
+      if (r >= centerMin && r <= centerMax && c >= centerMin && c <= centerMax) continue;
+
+      matrix[r][c] = rng() > 0.48;
+    }
+  }
+
+  const moduleSize = 6;
+  const padding = 12;
+  const totalDim = size * moduleSize + padding * 2;
+  let paths = '';
+
+  for (let r = 0; r < size; r++) {
+    for (let c = 0; c < size; c++) {
+      if (matrix[r][c]) {
+        const x = padding + c * moduleSize;
+        const y = padding + r * moduleSize;
+        paths += `<rect x="${x}" y="${y}" width="${moduleSize}" height="${moduleSize}" fill="#1b4332"/>`;
+      }
+    }
+  }
+
+  const centerPixel = padding + (size / 2) * moduleSize;
+  const centerBadgeSize = moduleSize * 6.5;
+
+  return `
+    <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${totalDim} ${totalDim}" style="width: 100%; height: 100%; border-radius: 8px;">
+      <rect width="${totalDim}" height="${totalDim}" fill="#ffffff" rx="8"/>
+      ${paths}
+      <rect x="${centerPixel - centerBadgeSize / 2}" y="${centerPixel - centerBadgeSize / 2}" width="${centerBadgeSize}" height="${centerBadgeSize}" fill="#ffffff" rx="6" stroke="#2d6a4f" stroke-width="2"/>
+      <rect x="${centerPixel - centerBadgeSize / 2 + 3}" y="${centerPixel - centerBadgeSize / 2 + 3}" width="${centerBadgeSize - 6}" height="${centerBadgeSize - 6}" fill="#1b4332" rx="4"/>
+      <text x="${centerPixel}" y="${centerPixel + 4}" fill="#ffffff" font-family="'Plus Jakarta Sans', sans-serif" font-weight="800" font-size="11" text-anchor="middle">UPI</text>
+    </svg>
+  `;
+}
+
+/**
+ * Dynamically render the sample scannable QR Code container with the current order amount.
+ */
+function updateUpiQrCode(amount) {
+  if (amount === undefined) {
+    let subtotal = 0;
+    appState.cart.forEach(item => subtotal += item.product.price * item.quantity);
+    const discountAmount = Math.round((appState.redeemedPoints / 100) * 100);
+    const carrierRadios = document.querySelectorAll('input[name="carrier"]');
+    const shippingFee = (carrierRadios.length > 1 && carrierRadios[1].checked) ? 99 : 0;
+    amount = Math.max(0, subtotal - discountAmount + shippingFee);
+  }
+
+  const displayElem = document.getElementById('upiDisplayAmount');
+  if (displayElem) displayElem.textContent = `₹${amount.toLocaleString('en-IN')}`;
+
+  const container = document.getElementById('upiQrCodeContainer');
+  if (!container) return;
+
+  const upiUrl = `upi://pay?pa=verdantliving@upi&pn=Verdant%20Living&am=${amount}&cu=INR&tn=Eco%20Marketplace%20Order`;
+  const svgHtml = generateUpiQrSvg(amount, upiUrl);
+
+  container.innerHTML = `
+    <div style="position: relative; width: 170px; height: 170px; margin: 0 auto;">
+      ${svgHtml}
+      <img src="https://api.qrserver.com/v1/create-qr-code/?size=170x170&margin=4&data=${encodeURIComponent(upiUrl)}" 
+           alt="UPI Payment QR Code" 
+           style="position: absolute; inset: 0; width: 100%; height: 100%; border-radius: 8px; opacity: 0.98;"
+           onerror="this.style.display='none'">
+    </div>
+    <a href="${upiUrl}" class="btn-chip" style="margin-top: 10px; font-size: 0.78rem; display: inline-flex; align-items: center; gap: 6px;">
+      <i class="fa-solid fa-mobile-screen"></i> Pay via UPI App (₹${amount.toLocaleString('en-IN')})
+    </a>
+  `;
+}
+
+/**
+ * Handle UPI ID (VPA) verification and trigger automated invoice generation upon success.
+ */
+function handleUpiVerification() {
+  const upiInput = document.getElementById('upiIdInput');
+  const statusElem = document.getElementById('upiVerifyStatus');
+  const verifyBtn = document.getElementById('verifyUpiBtn');
+  const upiId = (upiInput?.value || '').trim();
+
+  if (!upiId || !upiId.includes('@')) {
+    if (statusElem) {
+      statusElem.style.display = 'block';
+      statusElem.className = 'upi-verify-status error';
+      statusElem.innerHTML = '<i class="fa-solid fa-circle-exclamation"></i> Please enter a valid UPI ID (e.g. yourname@okhdfcbank or 9876543210@upi)';
+    }
+    return;
+  }
+
+  // Verifying state with spinner
+  if (verifyBtn) {
+    verifyBtn.disabled = true;
+    verifyBtn.innerHTML = '<i class="fa-solid fa-spinner fa-spin"></i> Verifying...';
+  }
+  if (statusElem) {
+    statusElem.style.display = 'block';
+    statusElem.className = 'upi-verify-status verifying';
+    statusElem.innerHTML = `<i class="fa-solid fa-spinner fa-spin"></i> Connecting to UPI gateway for VPA "<strong>${upiId}</strong>"...`;
+  }
+
+  setTimeout(() => {
+    if (verifyBtn) {
+      verifyBtn.disabled = false;
+      verifyBtn.className = 'btn-forest';
+      verifyBtn.innerHTML = '<i class="fa-solid fa-circle-check"></i> Verified ✓';
+    }
+    if (statusElem) {
+      statusElem.className = 'upi-verify-status success';
+      statusElem.innerHTML = `
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <i class="fa-solid fa-circle-check" style="font-size: 1.25rem; color: var(--color-forest-medium);"></i>
+          <div>
+            <strong>UPI ID Verified: ${upiId}</strong><br>
+            <span>NPCI VPA active • Payment Authorized. Launching automated invoice...</span>
+          </div>
+        </div>
+      `;
+    }
+    appState.upiVerified = true;
+    showToast(`✓ UPI ID "${upiId}" verified! Generating official invoice...`);
+
+    // Automated Invoice Generation triggered on successful payment verification!
+    setTimeout(() => {
+      completeCheckoutWithMethod('UPI', {
+        vpa: upiId,
+        status: 'Paid - Verified via UPI Instant Pay',
+        txnId: 'UPI-TXN-' + Math.floor(100000000 + Math.random() * 900000000)
+      });
+    }, 900);
+  }, 1000);
+}
+
+/**
+ * Universal order placement and automated invoice generation handler.
+ */
+function completeCheckoutWithMethod(paymentMethod, paymentMeta = {}) {
+  if (appState.cart.length === 0) {
+    showToast('Your cart is empty! Please add products first.');
+    switchPage('landingView');
+    return null;
+  }
+
+  // Extract recipient address details
+  const firstName = document.getElementById('shipFirstName')?.value.trim() || 'Jane';
+  const lastName = document.getElementById('shipLastName')?.value.trim() || 'Doe';
+  const street = document.getElementById('shipStreet')?.value.trim() || '42 MG Road, Indiranagar';
+  const city = document.getElementById('shipCity')?.value.trim() || 'Bengaluru';
+  const state = document.getElementById('shipState')?.value.trim() || 'Karnataka';
+  const zip = document.getElementById('shipZip')?.value.trim() || '560038';
+
+  // Determine delivery carrier & fee
+  const carrierRadios = document.querySelectorAll('input[name="carrier"]');
+  let selectedCarrier = 'Zero-Emission EV Courier (100% Electric)';
+  let shippingFee = 0;
+  if (carrierRadios.length > 1 && carrierRadios[1].checked) {
+    selectedCarrier = 'Doorstep Take-Back Exchange Courier';
+    shippingFee = 99;
+  }
+
+  // Eco-Packaging preference
+  const packagingSelect = document.getElementById('packagingChoice');
+  const selectedPackaging = packagingSelect ? packagingSelect.value : '100% Home-Compostable Mushroom Mycelium Packaging';
+
+  // Calculate items, saplings, CO2 offset, and financial totals
+  let subtotal = 0;
+  let totalTrees = 0;
+  const orderItems = appState.cart.map(item => {
+    subtotal += item.product.price * item.quantity;
+    totalTrees += item.quantity;
+    return {
+      id: item.product.id,
+      name: item.product.name,
+      category: item.product.category,
+      categoryLabel: item.product.categoryLabel,
+      material: item.product.material,
+      price: item.product.price,
+      quantity: item.quantity,
+      image: item.product.image,
+      saplingBadge: item.product.saplingBadge,
+      description: item.product.description
+    };
+  });
+
+  const discountAmount = Math.round((appState.redeemedPoints / 100) * 100);
+  const finalTotal = Math.max(0, subtotal - discountAmount + shippingFee);
+  const co2Offset = totalTrees * 22;
+  const pointsEarned = Math.round(subtotal * 0.1);
+
+  // Generate unique Order ID
+  const orderNumber = Math.floor(10000 + Math.random() * 90000);
+  const orderId = `VL-2026-${orderNumber}`;
+
+  // Current formatted timestamp
+  const now = new Date();
+  const dateFormatted = now.toLocaleDateString('en-US', {
+    month: 'short',
+    day: 'numeric',
+    year: 'numeric'
+  }) + ' | ' + now.toLocaleTimeString('en-US', {
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+
+  const orderStatus = paymentMethod === 'Cash on Delivery (COD)' ? 'Processing' : 'Processing';
+
+  // Construct new Past Order object with complete payment metadata
+  const newOrder = {
+    id: orderId,
+    date: dateFormatted,
+    timestamp: Date.now(),
+    status: orderStatus,
+    paymentMethod: paymentMethod,
+    paymentDetails: paymentMeta,
+    recipient: {
+      name: `${firstName} ${lastName}`.trim(),
+      street: street,
+      city: city,
+      state: state,
+      zip: zip
+    },
+    carrier: selectedCarrier,
+    packaging: selectedPackaging,
+    items: orderItems,
+    subtotal: subtotal,
+    discount: discountAmount,
+    shippingFee: shippingFee,
+    taxAmount: 0, // 5% GST included in MRP
+    total: finalTotal,
+    treesPlanted: totalTrees,
+    co2Offset: co2Offset,
+    pointsEarned: pointsEarned
+  };
+
+  // Prepend to localStorage past orders list
+  const existingOrders = getPastOrders();
+  existingOrders.unshift(newOrder);
+  savePastOrders(existingOrders);
+
+  // Update State & Points Balance
+  appState.userPoints = Math.max(0, appState.userPoints - appState.redeemedPoints) + pointsEarned;
+  appState.userTrees += totalTrees;
+  appState.userCo2Offset += co2Offset;
+  appState.cart = [];
+  appState.redeemedPoints = 0;
+
+  updateProfileUI();
+  renderCartDrawer();
+  renderCardPage();
+  renderPastOrders();
+
+  // Populate Order Success Modal in case accessed later
+  const successOrderIdElem = document.getElementById('successOrderId');
+  if (successOrderIdElem) successOrderIdElem.textContent = `#${newOrder.id}`;
+  
+  const successOrderTotalElem = document.getElementById('successOrderTotal');
+  if (successOrderTotalElem) successOrderTotalElem.textContent = `₹${finalTotal.toLocaleString('en-IN')}`;
+
+  const successOrderTreesElem = document.getElementById('successOrderTrees');
+  if (successOrderTreesElem) successOrderTreesElem.textContent = `${totalTrees} Saplings Planted`;
+
+  const successViewInvoiceBtn = document.getElementById('successViewInvoiceBtn');
+  if (successViewInvoiceBtn) {
+    successViewInvoiceBtn.onclick = () => {
+      closeModal('orderSuccessModal');
+      openInvoiceModal(newOrder.id);
+    };
+  }
+
+  // Trigger automated Invoice Generation modal directly!
+  openInvoiceModal(newOrder.id);
+  showToast(`🎉 Order #${newOrder.id} placed! Automated official invoice generated.`);
+  return newOrder;
+}
+
+/**
+ * Handle checkout submission via the main Place Order button.
+ */
 function handleShippingOrderSubmit(e) {
   e.preventDefault();
   if (appState.cart.length === 0) {
@@ -629,14 +1036,36 @@ function handleShippingOrderSubmit(e) {
     return;
   }
 
-  appState.userPoints = Math.max(0, appState.userPoints - appState.redeemedPoints);
-  appState.cart = [];
-  appState.redeemedPoints = 0;
+  const method = appState.selectedPaymentMethod || 'upi';
+  let paymentMeta = {};
 
-  updateProfileUI();
-  renderCartDrawer();
-  renderCardPage();
-  openModal('orderSuccessModal');
+  if (method === 'upi') {
+    const upiInput = document.getElementById('upiIdInput');
+    const vpa = (upiInput?.value || '').trim() || 'verdantliving@upi';
+    paymentMeta = {
+      vpa: vpa,
+      status: 'Paid - Verified via UPI Instant Pay',
+      txnId: 'UPI-TXN-' + Math.floor(100000000 + Math.random() * 900000000)
+    };
+    completeCheckoutWithMethod('UPI', paymentMeta);
+  } else if (method === 'cod') {
+    paymentMeta = {
+      terms: 'Payable on Delivery to EV Courier',
+      status: 'Authorized - COD Doorstep Verification Pending',
+      otp: Math.floor(1000 + Math.random() * 9000)
+    };
+    completeCheckoutWithMethod('Cash on Delivery (COD)', paymentMeta);
+  } else if (method === 'card') {
+    const cardNum = document.getElementById('cardNumInput')?.value.trim() || '4532 8921 7734 8890';
+    const cardHolder = document.getElementById('cardHolderInput')?.value.trim() || 'Jane Doe';
+    paymentMeta = {
+      cardHolder: cardHolder,
+      last4: cardNum.slice(-4),
+      status: 'Paid - Verified 256-bit Encrypted Card',
+      authCode: 'AUTH-' + Math.floor(100000 + Math.random() * 900000)
+    };
+    completeCheckoutWithMethod('Credit / Debit Card', paymentMeta);
+  }
 }
 
 // ==========================================================================
@@ -995,4 +1424,555 @@ function showToast(message) {
     toast.style.transition = '0.3s cubic-bezier(0.16, 1, 0.3, 1)';
     setTimeout(() => toast.remove(), 300);
   }, 4000);
+}
+
+// ==========================================================================
+// 9. Past Orders & Dynamic Invoice Generation Logic (localStorage backed)
+// ==========================================================================
+const STORAGE_KEY_PAST_ORDERS = 'verdant_past_orders';
+
+/**
+ * Retrieve past orders array from localStorage or initialize with seed eco-friendly orders.
+ */
+function getPastOrders() {
+  try {
+    const raw = localStorage.getItem(STORAGE_KEY_PAST_ORDERS);
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed) && parsed.length > 0) {
+        return parsed;
+      }
+    }
+  } catch (err) {
+    console.error('Error reading past orders from localStorage:', err);
+  }
+
+  // Seed default eco-friendly orders if none exist
+  const defaultOrders = [
+    {
+      id: 'VL-2026-89412',
+      date: 'Oct 18, 2026 | 02:45 PM',
+      timestamp: Date.now() - (5 * 86400000),
+      status: 'Delivered',
+      recipient: {
+        name: 'Jane Doe',
+        street: '42 MG Road, Indiranagar',
+        city: 'Bengaluru',
+        state: 'Karnataka',
+        zip: '560038'
+      },
+      carrier: 'Zero-Emission EV Courier (100% Electric)',
+      packaging: '100% Home-Compostable Mushroom Mycelium Packaging',
+      items: [
+        {
+          id: 'p1',
+          name: 'Ocean Plastic rPET Daypack',
+          material: '100% Recycled rPET',
+          price: 2499,
+          quantity: 1,
+          image: 'images/p1_daypack.jpg',
+          saplingBadge: '🌱 Plants 1 Sapling',
+          description: 'Constructed from 32 recovered ocean plastic bottles.'
+        },
+        {
+          id: 'p9',
+          name: 'Bamboo Cutlery & Straw Kit',
+          material: '< 30-Day Biodegradable',
+          price: 499,
+          quantity: 2,
+          image: 'images/p9_bamboo_cutlery.jpg',
+          saplingBadge: '🌱 Plants 1 Sapling',
+          description: '100% organic raw bamboo utensil travel pouch.'
+        }
+      ],
+      subtotal: 3497,
+      discount: 100,
+      shippingFee: 0,
+      total: 3397,
+      treesPlanted: 3,
+      co2Offset: 66,
+      pointsEarned: 350
+    },
+    {
+      id: 'VL-2026-91024',
+      date: 'Oct 21, 2026 | 11:15 AM',
+      timestamp: Date.now() - (2 * 86400000),
+      status: 'Processing',
+      recipient: {
+        name: 'Jane Doe',
+        street: '42 MG Road, Indiranagar',
+        city: 'Bengaluru',
+        state: 'Karnataka',
+        zip: '560038'
+      },
+      carrier: 'Zero-Emission EV Courier (100% Electric)',
+      packaging: '100% Recycled Kraft Cardboard Box',
+      items: [
+        {
+          id: 'p5',
+          name: 'Water-Hyacinth Woven Footwear',
+          material: 'Invasive Water-Hyacinth',
+          price: 1899,
+          quantity: 1,
+          image: 'images/p5_hyacinth_shoes.jpg',
+          saplingBadge: '🌱 Plants 1 Sapling',
+          description: 'Woven from invasive water hyacinth harvested to clear waterways.'
+        },
+        {
+          id: 'p4',
+          name: 'Wildflower Seed-Paper Journal',
+          material: 'Zero-Waste Seed Paper',
+          price: 499,
+          quantity: 1,
+          image: 'images/p4_seed_journal.jpg',
+          saplingBadge: '🌱 Plants 1 Sapling',
+          description: '100% recycled paper embedded with wildflower seeds.'
+        }
+      ],
+      subtotal: 2398,
+      discount: 0,
+      shippingFee: 0,
+      total: 2398,
+      treesPlanted: 2,
+      co2Offset: 44,
+      pointsEarned: 240
+    }
+  ];
+
+  savePastOrders(defaultOrders);
+  return defaultOrders;
+}
+
+/**
+ * Persist past orders array to localStorage.
+ */
+function savePastOrders(orders) {
+  try {
+    localStorage.setItem(STORAGE_KEY_PAST_ORDERS, JSON.stringify(orders));
+  } catch (err) {
+    console.error('Error saving past orders to localStorage:', err);
+  }
+}
+
+/**
+ * Initialize Past Orders on DOM load.
+ */
+function initPastOrders() {
+  appState.pastOrders = getPastOrders();
+  renderPastOrders();
+}
+
+/**
+ * Change status filter ('all', 'Delivered', 'Processing').
+ */
+function filterOrders(status) {
+  appState.pastOrdersFilter = status;
+
+  // Update pills UI
+  const pills = document.querySelectorAll('.order-filter-pill');
+  pills.forEach(p => p.classList.remove('active'));
+
+  if (status === 'all') {
+    document.getElementById('filter-pill-all')?.classList.add('active');
+  } else if (status.toLowerCase() === 'delivered') {
+    document.getElementById('filter-pill-delivered')?.classList.add('active');
+  } else if (status.toLowerCase() === 'processing') {
+    document.getElementById('filter-pill-processing')?.classList.add('active');
+  }
+
+  renderPastOrders();
+}
+
+/**
+ * Handle search query by order ID or product name.
+ */
+function handleOrdersSearch(query) {
+  appState.pastOrdersSearch = (query || '').trim().toLowerCase();
+  renderPastOrders();
+}
+
+/**
+ * Render the Past Orders container and summary metrics.
+ */
+function renderPastOrders() {
+  const container = document.getElementById('pastOrdersContainer');
+  if (!container) return;
+
+  const orders = getPastOrders();
+  appState.pastOrders = orders;
+
+  // Summary Metrics calculations
+  const totalOrders = orders.length;
+  const totalSpent = orders.reduce((sum, o) => sum + (o.total || 0), 0);
+  const totalTrees = orders.reduce((sum, o) => sum + (o.treesPlanted || 0), 0);
+  const totalCo2 = orders.reduce((sum, o) => sum + (o.co2Offset || 0), 0);
+
+  const countDelivered = orders.filter(o => o.status.toLowerCase() === 'delivered').length;
+  const countProcessing = orders.filter(o => o.status.toLowerCase() === 'processing').length;
+
+  // Update summary header DOM elements
+  const countStatElem = document.getElementById('ordersCountStat');
+  if (countStatElem) countStatElem.textContent = totalOrders;
+
+  const spentStatElem = document.getElementById('ordersSpentStat');
+  if (spentStatElem) spentStatElem.textContent = `₹${totalSpent.toLocaleString('en-IN')}`;
+
+  const treesStatElem = document.getElementById('ordersTreesStat');
+  if (treesStatElem) treesStatElem.textContent = `${totalTrees} Saplings`;
+
+  const co2StatElem = document.getElementById('ordersCo2Stat');
+  if (co2StatElem) co2StatElem.textContent = `${totalCo2} kg`;
+
+  // Update filter pill counts
+  const filterCountAll = document.getElementById('filterCountAll');
+  if (filterCountAll) filterCountAll.textContent = totalOrders;
+
+  const filterCountDelivered = document.getElementById('filterCountDelivered');
+  if (filterCountDelivered) filterCountDelivered.textContent = countDelivered;
+
+  const filterCountProcessing = document.getElementById('filterCountProcessing');
+  if (filterCountProcessing) filterCountProcessing.textContent = countProcessing;
+
+  // Apply status and search filters
+  let filtered = orders;
+  if (appState.pastOrdersFilter !== 'all') {
+    filtered = filtered.filter(o => o.status.toLowerCase() === appState.pastOrdersFilter.toLowerCase());
+  }
+
+  if (appState.pastOrdersSearch) {
+    const q = appState.pastOrdersSearch;
+    filtered = filtered.filter(o => {
+      const matchId = o.id.toLowerCase().includes(q);
+      const matchItems = o.items.some(item => 
+        item.name.toLowerCase().includes(q) || 
+        (item.material && item.material.toLowerCase().includes(q))
+      );
+      const matchDate = o.date.toLowerCase().includes(q);
+      return matchId || matchItems || matchDate;
+    });
+  }
+
+  container.innerHTML = '';
+
+  // Render empty state if no matching orders
+  if (filtered.length === 0) {
+    container.innerHTML = `
+      <div class="orders-empty-state">
+        <div class="orders-empty-icon">
+          <i class="fa-solid fa-box-open"></i>
+        </div>
+        <h3 style="font-size: 1.3rem; margin-bottom: 8px; color: var(--color-forest-dark);">No Previous Orders Found</h3>
+        <p style="color: var(--color-text-muted); font-size: 0.95rem; max-width: 480px; margin: 0 auto 20px;">
+          ${appState.pastOrdersSearch ? `No orders matched "${appState.pastOrdersSearch}". Try clearing the search keyword.` : 'You have no eco-friendly orders under this status filter yet.'}
+        </p>
+        <button class="btn-terracotta" onclick="switchPage('cardView')">
+          <i class="fa-solid fa-basket-shopping"></i> Explore Eco Catalog
+        </button>
+      </div>
+    `;
+    return;
+  }
+
+  // Render individual Order Cards
+  filtered.forEach(order => {
+    const isDelivered = order.status.toLowerCase() === 'delivered';
+    const statusClass = isDelivered ? 'status-delivered' : 'status-processing';
+    const statusIcon = isDelivered ? '<i class="fa-solid fa-circle-check"></i>' : '<i class="fa-solid fa-clock"></i>';
+
+    const card = document.createElement('div');
+    card.className = 'order-card';
+
+    // Build items list HTML
+    let itemsHtml = '';
+    order.items.forEach(item => {
+      itemsHtml += `
+        <div class="order-item-row">
+          <img src="${item.image}" alt="${item.name}" class="order-item-thumb" onerror="this.src='https://images.unsplash.com/photo-1542601906990-b4d3fb778b09?auto=format&fit=crop&w=150&q=80'">
+          <div class="order-item-info">
+            <h4 class="order-item-title">${item.name}</h4>
+            <div class="order-item-badges">
+              <span class="badge-material">${item.material || 'Eco-Friendly'}</span>
+              ${item.saplingBadge ? `<span class="badge-sapling">${item.saplingBadge}</span>` : ''}
+            </div>
+          </div>
+          <div class="order-item-pricing">
+            <div class="order-item-qty-price">${item.quantity} × ₹${item.price.toLocaleString('en-IN')}</div>
+            <div class="order-item-line-total">₹${(item.price * item.quantity).toLocaleString('en-IN')}</div>
+          </div>
+        </div>
+      `;
+    });
+
+    const packagingLabel = order.packaging ? order.packaging.split('(')[0].trim() : 'Mushroom Mycelium Packaging';
+    const carrierLabel = order.carrier ? order.carrier.split('(')[0].trim() : 'Zero-Emission EV Courier';
+
+    card.innerHTML = `
+      <div class="order-card-header">
+        <div class="order-header-left">
+          <div class="order-id-tag">
+            <i class="fa-solid fa-receipt" style="color: var(--color-terracotta);"></i> #${order.id}
+          </div>
+          <div class="order-date-tag">
+            <i class="fa-regular fa-calendar-check"></i> ${order.date}
+          </div>
+        </div>
+        <div>
+          <span class="order-status-badge ${statusClass}">
+            ${statusIcon} ${order.status}
+          </span>
+        </div>
+      </div>
+
+      <div class="order-card-body">
+        <div class="order-items-list">
+          ${itemsHtml}
+        </div>
+      </div>
+
+      <div class="order-card-footer">
+        <div class="order-eco-pills">
+          <span class="order-eco-pill">
+            <i class="fa-solid fa-box-open" style="color: var(--color-terracotta);"></i> ${packagingLabel}
+          </span>
+          <span class="order-eco-pill">
+            <i class="fa-solid fa-truck-fast"></i> ${carrierLabel}
+          </span>
+          <span class="order-eco-pill tree-highlight">
+            <i class="fa-solid fa-tree"></i> ${order.treesPlanted || 1} Sapling(s) Planted
+          </span>
+        </div>
+
+        <div class="order-card-right">
+          <div class="order-total-block">
+            <div class="order-total-lbl">Total Paid</div>
+            <div class="order-total-val">₹${order.total.toLocaleString('en-IN')}</div>
+          </div>
+          <button class="btn-view-invoice" onclick="openInvoiceModal('${order.id}')">
+            <i class="fa-solid fa-file-invoice"></i> View Invoice
+          </button>
+        </div>
+      </div>
+    `;
+
+    container.appendChild(card);
+  });
+}
+
+/**
+ * Open professional, printable Eco Invoice Modal for a specific order.
+ */
+function openInvoiceModal(orderId) {
+  const orders = getPastOrders();
+  const order = orders.find(o => o.id === orderId);
+  if (!order) {
+    showToast('Order not found!');
+    return;
+  }
+
+  appState.currentInvoiceOrderId = orderId;
+  const container = document.getElementById('invoicePrintableArea');
+  if (!container) return;
+
+  const isDelivered = order.status.toLowerCase() === 'delivered';
+  const statusClass = isDelivered ? 'status-delivered' : 'status-processing';
+  const statusIcon = isDelivered ? '<i class="fa-solid fa-circle-check"></i>' : '<i class="fa-solid fa-clock"></i>';
+
+  let itemsRowsHtml = '';
+  order.items.forEach((item, index) => {
+    const lineTotal = item.price * item.quantity;
+    itemsRowsHtml += `
+      <tr>
+        <td style="text-align: center; font-weight: 700; color: var(--color-text-light);">${index + 1}</td>
+        <td>
+          <div style="font-weight: 700; color: var(--color-forest-dark); font-size: 0.95rem;">${item.name}</div>
+          <div style="font-size: 0.8rem; color: var(--color-text-muted);">${item.description ? item.description.substring(0, 70) + '...' : ''}</div>
+        </td>
+        <td>
+          <span style="background: var(--color-forest-pale); color: var(--color-forest-dark); padding: 3px 8px; border-radius: var(--radius-full); font-size: 0.75rem; font-weight: 700;">
+            ${item.material || 'Eco Sustainable'}
+          </span>
+        </td>
+        <td style="text-align: center; font-weight: 700;">${item.quantity}</td>
+        <td style="text-align: right; font-weight: 600;">₹${item.price.toLocaleString('en-IN')}</td>
+        <td style="text-align: right; font-weight: 800; color: var(--color-forest-dark);">₹${lineTotal.toLocaleString('en-IN')}</td>
+      </tr>
+    `;
+  });
+
+  container.innerHTML = `
+    <div class="invoice-header-box">
+      <div>
+        <div class="invoice-brand-title">
+          <div class="logo-icon" style="width: 34px; height: 34px; font-size: 0.95rem;">
+            <i class="fa-solid fa-leaf"></i>
+          </div>
+          <span>Verdant Living</span>
+        </div>
+        <div style="font-size: 0.82rem; color: var(--color-text-muted); margin-top: 4px;">
+          Closed-Loop Circularity Platform • Verified Microplastic-Free Lifecycle • GSTIN: 29AABCV1234F1Z8
+        </div>
+      </div>
+      <div class="invoice-meta-right">
+        <div style="font-size: 0.75rem; text-transform: uppercase; color: var(--color-text-light); font-weight: 700;">Tax Invoice & Certificate</div>
+        <div class="invoice-number-tag">INV-${order.id}</div>
+        <div style="font-size: 0.82rem; color: var(--color-text-muted); margin-top: 2px;">
+          <i class="fa-regular fa-calendar"></i> ${order.date}
+        </div>
+        <div style="margin-top: 6px;">
+          <span class="order-status-badge ${statusClass}" style="font-size: 0.75rem; padding: 3px 10px;">
+            ${statusIcon} ${order.status}
+          </span>
+        </div>
+      </div>
+    </div>
+
+    <div class="invoice-details-grid">
+      <div class="invoice-details-col">
+        <h5>Billed & Shipped To</h5>
+        <div style="font-weight: 800; color: var(--color-forest-dark); font-size: 0.98rem;">${order.recipient.name}</div>
+        <div style="color: var(--color-text-muted); margin-top: 2px;">${order.recipient.street}</div>
+        <div style="color: var(--color-text-muted);">${order.recipient.city}, ${order.recipient.state} - ${order.recipient.zip}</div>
+        <div style="color: var(--color-text-muted); font-size: 0.82rem; margin-top: 4px;">Payment Mode: Verified Carbon-Neutral Prepaid</div>
+      </div>
+      <div class="invoice-details-col">
+        <h5>Fulfillment & Eco Packaging</h5>
+        <div style="font-weight: 700; color: var(--color-forest-dark);"><i class="fa-solid fa-truck-fast" style="color: var(--color-forest-medium);"></i> ${order.carrier}</div>
+        <div style="color: var(--color-forest-dark); font-weight: 600; margin-top: 4px;"><i class="fa-solid fa-box-open" style="color: var(--color-terracotta);"></i> ${order.packaging}</div>
+        <div style="font-size: 0.82rem; color: var(--color-forest-medium); font-weight: 700; margin-top: 6px;">
+          <i class="fa-solid fa-shield-halved"></i> 100% Zero Single-Use Plastic Certified
+        </div>
+      </div>
+    </div>
+
+    <div class="invoice-table-wrapper">
+      <table class="invoice-table">
+        <thead>
+          <tr>
+            <th style="width: 40px; text-align: center;">#</th>
+            <th>Eco-Item Description</th>
+            <th>Lifecycle / Material</th>
+            <th style="text-align: center;">Qty</th>
+            <th style="text-align: right;">Unit Price</th>
+            <th style="text-align: right;">Amount</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${itemsRowsHtml}
+        </tbody>
+      </table>
+    </div>
+
+    <div class="invoice-totals-box">
+      <div class="invoice-total-row">
+        <span>Items Subtotal:</span>
+        <span style="font-weight: 700;">₹${order.subtotal.toLocaleString('en-IN')}</span>
+      </div>
+      ${order.discount > 0 ? `
+        <div class="invoice-total-row" style="color: var(--color-terracotta);">
+          <span>Eco-Points Discount:</span>
+          <span style="font-weight: 700;">-₹${order.discount.toLocaleString('en-IN')}</span>
+        </div>
+      ` : ''}
+      <div class="invoice-total-row">
+        <span>Zero-Emission Delivery:</span>
+        <span style="font-weight: 700; color: var(--color-forest-medium);">${order.shippingFee > 0 ? `₹${order.shippingFee}` : 'FREE (0 CO₂)'}</span>
+      </div>
+      <div class="invoice-total-row grand-total">
+        <span>Total Paid:</span>
+        <span>₹${order.total.toLocaleString('en-IN')}</span>
+      </div>
+    </div>
+
+    <div class="invoice-eco-certificate">
+      <div class="invoice-cert-badge">
+        <i class="fa-solid fa-seedling"></i>
+      </div>
+      <div>
+        <strong>Verified Environmental Impact Certificate:</strong><br>
+        This circular purchase successfully funded <strong>${order.treesPlanted} Native Tree Sapling(s)</strong> (est. ${order.co2Offset} kg Lifetime CO₂ offset) planted in protected restoration corridors. Tested under ISO 14855 standards with zero micro-plastic runoff.
+      </div>
+    </div>
+  `;
+
+  openModal('invoiceModal');
+}
+
+/**
+ * Trigger native print dialog for the current invoice.
+ */
+function printInvoice() {
+  window.print();
+}
+
+/**
+ * Download text file of the active invoice.
+ */
+function downloadCurrentInvoice() {
+  if (!appState.currentInvoiceOrderId) return;
+  downloadInvoiceFile(appState.currentInvoiceOrderId);
+}
+
+/**
+ * Generate formatted text receipt and download to local disk.
+ */
+function downloadInvoiceFile(orderId) {
+  const orders = getPastOrders();
+  const order = orders.find(o => o.id === orderId);
+  if (!order) return;
+
+  let itemsText = '';
+  order.items.forEach((item, idx) => {
+    itemsText += `${idx + 1}. ${item.name} (${item.material}) x ${item.quantity} - ₹${(item.price * item.quantity).toLocaleString('en-IN')}\n`;
+  });
+
+  const invoiceText = `
+=====================================================
+VERDANT LIVING - OFFICIAL CIRCULAR TAX INVOICE
+=====================================================
+Invoice No: INV-${order.id}
+Order Date: ${order.date}
+Status: ${order.status.toUpperCase()}
+GSTIN: 29AABCV1234F1Z8
+Verification: ISO 14855 / ASTM D6400 Verified Zero-Microplastic
+
+CUSTOMER & SHIPPING DETAILS:
+----------------------------
+Recipient: ${order.recipient.name}
+Address: ${order.recipient.street}, ${order.recipient.city}, ${order.recipient.state} - ${order.recipient.zip}
+Delivery Carrier: ${order.carrier}
+Eco-Packaging: ${order.packaging}
+
+PURCHASED ECO-FRIENDLY ITEMS:
+-----------------------------
+${itemsText}
+FINANCIAL BREAKDOWN:
+--------------------
+Subtotal: ₹${order.subtotal.toLocaleString('en-IN')}
+Eco-Points Discount: -₹${order.discount.toLocaleString('en-IN')}
+Shipping Fee: ${order.shippingFee > 0 ? `₹${order.shippingFee}` : 'FREE (Carbon-Neutral)'}
+-----------------------------------------------------
+TOTAL AMOUNT PAID: ₹${order.total.toLocaleString('en-IN')}
+=====================================================
+
+ENVIRONMENTAL IMPACT CERTIFICATE:
+---------------------------------
+Native Trees Planted: ${order.treesPlanted} Sapling(s)
+Lifetime CO2 Offset: ${order.co2Offset} kg CO2
+Earned Eco-Points: +${order.pointsEarned} pts
+
+Thank you for choosing closed-loop sustainability!
+Verdant Living Platform Inc. (https://verdantliving.org)
+=====================================================
+`;
+
+  const blob = new Blob([invoiceText], { type: 'text/plain' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `Verdant_Living_Invoice_${order.id}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+  showToast(`📄 Downloaded invoice for Order #${order.id}`);
 }
