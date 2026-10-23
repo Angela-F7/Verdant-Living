@@ -36,7 +36,7 @@
         </div>
       </div>
 
-      <!-- 4 Page View Switcher Navigation -->
+      <!-- 5 Page View Switcher Navigation -->
       <nav aria-label="Page View Switcher Navigation">
         <ul class="nav-menu" id="navMenu">
           <li>
@@ -52,6 +52,11 @@
           <li>
             <button class="page-tab-btn" id="tab-shippingView" onclick="switchPage('shippingView')">
               <i class="fa-solid fa-truck-fast"></i> Eco Shipping
+            </button>
+          </li>
+          <li>
+            <button class="page-tab-btn" id="tab-ordersView" onclick="switchPage('ordersView')">
+              <i class="fa-solid fa-clock-rotate-left"></i> Past Orders
             </button>
           </li>
           <li>
@@ -159,6 +164,12 @@
                 <i class="fa-solid fa-user-plus"></i> Claim Bonus & Create Account
               </button>
             </form>
+
+            <div style="margin-top: 24px; padding-top: 18px; border-top: 1px dashed var(--color-border); text-align: center;">
+              <button class="btn-outline" style="width: 100%; justify-content: center; font-size: 0.9rem; padding: 10px;" onclick="switchPage('ordersView')">
+                <i class="fa-solid fa-clock-rotate-left" style="color: var(--color-terracotta);"></i> View Past Orders & Invoices
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -651,7 +662,7 @@
           </div>
           <div class="step-node">
             <div class="step-circle">4</div>
-            <div class="step-label">Confirmation</div>
+            <div class="step-label">Invoice</div>
           </div>
         </div>
 
@@ -728,8 +739,148 @@
                 </select>
               </div>
 
-              <button type="submit" class="btn-forest" style="width: 100%; justify-content: center; padding: 14px; margin-top: 10px;">
-                <i class="fa-solid fa-lock"></i> Place Closed-Loop Order & Plant Trees
+              <!-- Interactive Payment Method Section -->
+              <h3 style="font-size: 1.2rem; margin-top: 26px; margin-bottom: 16px; color: var(--color-forest-dark);">
+                <i class="fa-solid fa-credit-card" style="color: var(--color-forest-medium);"></i> 4. Interactive Payment Method
+              </h3>
+
+              <div class="payment-methods-group">
+                <!-- Option 1: UPI -->
+                <label class="payment-method-card selected" id="pmCardUpi" onclick="selectPaymentMethod('upi')">
+                  <input type="radio" name="paymentMethodRadio" value="upi" checked>
+                  <div class="pm-info">
+                    <div class="pm-title">
+                      <strong>Instant UPI (QR & ID)</strong>
+                      <span class="pm-badge">Instant & Zero Fee</span>
+                    </div>
+                    <div class="pm-desc">GPay, PhonePe, Paytm, BHIM, Cred</div>
+                  </div>
+                  <div class="pm-icons">
+                    <i class="fa-solid fa-qrcode" style="font-size: 1.3rem; color: var(--color-forest-dark);"></i>
+                  </div>
+                </label>
+
+                <!-- Option 2: Cash on Delivery -->
+                <label class="payment-method-card" id="pmCardCod" onclick="selectPaymentMethod('cod')">
+                  <input type="radio" name="paymentMethodRadio" value="cod">
+                  <div class="pm-info">
+                    <div class="pm-title">
+                      <strong>Cash on Delivery (COD)</strong>
+                      <span class="pm-badge" style="background: var(--color-cream-alt); color: var(--color-text-muted);">Doorstep Pay</span>
+                    </div>
+                    <div class="pm-desc">Pay cash or scan QR on arrival of EV courier</div>
+                  </div>
+                  <div class="pm-icons">
+                    <i class="fa-solid fa-hand-holding-dollar" style="font-size: 1.3rem; color: var(--color-terracotta);"></i>
+                  </div>
+                </label>
+
+                <!-- Option 3: Credit / Debit Card -->
+                <label class="payment-method-card" id="pmCardCard" onclick="selectPaymentMethod('card')">
+                  <input type="radio" name="paymentMethodRadio" value="card">
+                  <div class="pm-info">
+                    <div class="pm-title">
+                      <strong>Credit / Debit Card</strong>
+                      <span class="pm-badge">256-bit Secure</span>
+                    </div>
+                    <div class="pm-desc">Visa, MasterCard, RuPay, Maestro</div>
+                  </div>
+                  <div class="pm-icons">
+                    <i class="fa-brands fa-cc-visa" style="font-size: 1.3rem; color: #1a1f71;"></i>
+                    <i class="fa-brands fa-cc-mastercard" style="font-size: 1.3rem; color: #eb001b;"></i>
+                  </div>
+                </label>
+              </div>
+
+              <!-- Dynamic Panel 1: UPI Details & Scannable QR -->
+              <div class="payment-details-panel" id="upiDetailsPanel">
+                <div class="upi-qr-section">
+                  <div class="upi-qr-card">
+                    <div class="upi-qr-header">
+                      <i class="fa-solid fa-leaf"></i> <span>Verdant Living UPI Pay</span>
+                    </div>
+                    <div class="upi-qr-image-wrapper" id="upiQrCodeContainer">
+                      <!-- Rendered dynamically by app.js updateUpiQrCode() -->
+                    </div>
+                    <div class="upi-qr-footer">
+                      <div class="upi-amount-pill">Pay <span id="upiDisplayAmount">₹0</span></div>
+                      <div style="font-size: 0.78rem; color: var(--color-text-muted); margin-top: 6px;">
+                        UPI VPA: <strong>verdantliving@upi</strong>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div class="upi-input-section">
+                    <div style="font-size: 0.92rem; font-weight: 700; color: var(--color-forest-dark); margin-bottom: 4px;">
+                      <i class="fa-solid fa-mobile-screen-button" style="color: var(--color-terracotta);"></i> Or Pay via Your UPI ID:
+                    </div>
+                    <p style="font-size: 0.82rem; color: var(--color-text-muted); margin-bottom: 10px;">
+                      Enter your UPI VPA to verify payment authorization and instantly trigger your automated digital tax invoice.
+                    </p>
+                    <div class="upi-input-group">
+                      <input type="text" id="upiIdInput" placeholder="e.g. yourname@okhdfcbank" value="eco.buyer@okhdfcbank">
+                      <button type="button" class="btn-terracotta" id="verifyUpiBtn" onclick="handleUpiVerification()">
+                        <i class="fa-solid fa-shield-check"></i> Verify Payment
+                      </button>
+                    </div>
+                    <div id="upiVerifyStatus" class="upi-verify-status" style="display: none;"></div>
+                    <div style="font-size: 0.8rem; color: var(--color-forest-medium); font-weight: 600; margin-top: 10px;">
+                      <i class="fa-solid fa-bolt"></i> Instant verification triggers automated tax invoice and sapling registration!
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Dynamic Panel 2: Cash on Delivery Terms -->
+              <div class="payment-details-panel" id="codDetailsPanel" style="display: none;">
+                <div class="cod-confirmation-box">
+                  <div class="cod-icon-badge">
+                    <i class="fa-solid fa-truck-ramp-box"></i>
+                  </div>
+                  <div class="cod-text">
+                    <h4>Cash on Delivery (COD) Confirmation Terms</h4>
+                    <ul>
+                      <li><strong>On-Delivery Payment:</strong> Please keep exact cash or pay using any UPI app upon delivery by our zero-emission EV courier partner.</li>
+                      <li><strong>Doorstep OTP Verification:</strong> A 4-digit verification code will be sent to your mobile phone before handover.</li>
+                      <li><strong>Instant Digital Tax Receipt:</strong> Your official invoice is generated immediately now so you can print or save it before delivery.</li>
+                      <li><strong>Satellite Sapling Guarantee:</strong> Your native tree will be reserved immediately and verified upon delivery confirmation.</li>
+                    </ul>
+                    <div class="cod-alert-pill">
+                      <i class="fa-solid fa-circle-check"></i> Zero extra COD surcharge. 100% Carbon-Neutral EV delivery.
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Dynamic Panel 3: Card Inputs -->
+              <div class="payment-details-panel" id="cardDetailsPanel" style="display: none;">
+                <div class="card-inputs-grid">
+                  <div class="form-group" style="grid-column: 1 / -1; margin-bottom: 12px;">
+                    <label for="cardNumInput">Card Number</label>
+                    <input type="text" id="cardNumInput" placeholder="4532 •••• •••• 8890" maxlength="19" value="4532 8921 7734 8890">
+                  </div>
+                  <div class="form-group" style="margin-bottom: 12px;">
+                    <label for="cardHolderInput">Cardholder Name</label>
+                    <input type="text" id="cardHolderInput" placeholder="Jane Doe" value="Jane Doe">
+                  </div>
+                  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 12px;">
+                    <div class="form-group" style="margin: 0;">
+                      <label for="cardExpiryInput">Expiry (MM/YY)</label>
+                      <input type="text" id="cardExpiryInput" placeholder="08/29" maxlength="5" value="08/29">
+                    </div>
+                    <div class="form-group" style="margin: 0;">
+                      <label for="cardCvvInput">CVV</label>
+                      <input type="password" id="cardCvvInput" placeholder="•••" maxlength="4" value="842">
+                    </div>
+                  </div>
+                </div>
+                <div style="font-size: 0.8rem; color: var(--color-forest-medium); font-weight: 600;">
+                  <i class="fa-solid fa-shield-halved"></i> 256-bit Bank Grade SSL Encryption • Verified RuPay, Visa & Mastercard Secure
+                </div>
+              </div>
+
+              <button type="submit" class="btn-forest" id="checkoutSubmitBtn" style="width: 100%; justify-content: center; padding: 14px; margin-top: 14px;">
+                <i class="fa-solid fa-lock"></i> <span id="checkoutSubmitBtnText">Place Closed-Loop Order & Generate Invoice</span>
               </button>
             </form>
           </div>
@@ -765,6 +916,78 @@
         </div>
       </div>
     </div>
+
+    <!-- ==========================================================================
+         PAGE 5: PAST ORDERS & INVOICES PAGE (#ordersView)
+         ========================================================================== -->
+    <div class="page-view" id="ordersView">
+      <div class="orders-page-wrapper container">
+        <div class="section-header">
+          <span class="section-badge">Verified Circular Order History</span>
+          <h2 class="section-title">Past Eco-Friendly Orders</h2>
+          <p class="section-desc">
+            Review previous circular purchases, inspect satellite-tracked sapling allocations, and re-open or print your tax invoices.
+          </p>
+        </div>
+
+        <!-- Orders Impact & Metrics Summary Banner -->
+        <div class="orders-summary-bar">
+          <div class="orders-stat-card">
+            <div class="stat-icon-circle"><i class="fa-solid fa-box-archive"></i></div>
+            <div class="stat-meta">
+              <div class="orders-stat-val" id="ordersCountStat">0</div>
+              <div class="orders-stat-lbl">Total Orders Placed</div>
+            </div>
+          </div>
+          <div class="orders-stat-card">
+            <div class="stat-icon-circle terracotta"><i class="fa-solid fa-indian-rupee-sign"></i></div>
+            <div class="stat-meta">
+              <div class="orders-stat-val" id="ordersSpentStat">₹0</div>
+              <div class="orders-stat-lbl">Total Circular Spend</div>
+            </div>
+          </div>
+          <div class="orders-stat-card">
+            <div class="stat-icon-circle"><i class="fa-solid fa-tree"></i></div>
+            <div class="stat-meta">
+              <div class="orders-stat-val" id="ordersTreesStat">0</div>
+              <div class="orders-stat-lbl">Native Trees Planted</div>
+            </div>
+          </div>
+          <div class="orders-stat-card">
+            <div class="stat-icon-circle"><i class="fa-solid fa-cloud-arrow-down"></i></div>
+            <div class="stat-meta">
+              <div class="orders-stat-val" id="ordersCo2Stat">0 kg</div>
+              <div class="orders-stat-lbl">Lifetime CO₂ Offset</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Orders Filtering and Search Toolbar -->
+        <div class="orders-controls-bar">
+          <div class="orders-search-box">
+            <i class="fa-solid fa-magnifying-glass"></i>
+            <input type="text" id="ordersSearchInput" placeholder="Search by Order ID (e.g. VL-2026) or item name..." oninput="handleOrdersSearch(this.value)">
+          </div>
+
+          <div class="orders-filter-pills" id="ordersFilterGroup">
+            <button class="order-filter-pill active" id="filter-pill-all" onclick="filterOrders('all')">
+              All Orders (<span id="filterCountAll">0</span>)
+            </button>
+            <button class="order-filter-pill" id="filter-pill-delivered" onclick="filterOrders('Delivered')">
+              <i class="fa-solid fa-circle-check" style="color: var(--color-forest-medium);"></i> Delivered (<span id="filterCountDelivered">0</span>)
+            </button>
+            <button class="order-filter-pill" id="filter-pill-processing" onclick="filterOrders('Processing')">
+              <i class="fa-solid fa-clock" style="color: var(--color-terracotta);"></i> Processing (<span id="filterCountProcessing">0</span>)
+            </button>
+          </div>
+        </div>
+
+        <!-- Dynamic Orders List Container -->
+        <div class="orders-list-container" id="pastOrdersContainer">
+          <!-- Dynamically populated via app.js renderPastOrders() -->
+        </div>
+      </div>
+    </div>
   </main>
 
   <!-- Footer -->
@@ -790,6 +1013,7 @@
             <li><a href="#" onclick="switchPage('loginView'); return false;">2. Login & Account Page</a></li>
             <li><a href="#" onclick="switchPage('cardView'); return false;">3. Card & Catalog Page</a></li>
             <li><a href="#" onclick="switchPage('shippingView'); return false;">4. Eco Shipping Page</a></li>
+            <li><a href="#" onclick="switchPage('ordersView'); return false;">5. Past Orders & Invoices</a></li>
           </ul>
         </div>
 
@@ -957,17 +1181,66 @@
 
   <!-- Order Success Confirmation Modal -->
   <div class="modal-overlay" id="orderSuccessModal">
-    <div class="modal-card" style="text-align: center;">
+    <div class="modal-card" style="text-align: center; max-width: 520px;">
       <div style="width: 64px; height: 64px; background: var(--color-forest-pale); color: var(--color-forest-dark); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 2rem; margin: 0 auto 16px;">
         <i class="fa-solid fa-circle-check"></i>
       </div>
-      <h3 style="font-size: 1.6rem; color: var(--color-forest-dark); margin-bottom: 10px;">Order Placed Successfully!</h3>
-      <p style="color: var(--color-text-muted); margin-bottom: 20px; font-size: 0.95rem;">
+      <h3 style="font-size: 1.6rem; color: var(--color-forest-dark); margin-bottom: 8px;">Order Placed Successfully!</h3>
+      <p style="color: var(--color-text-muted); margin-bottom: 16px; font-size: 0.92rem;">
         Thank you for supporting closed-loop sustainability! Your tree sapling GPS tracking code and receipt have been dispatched.
       </p>
-      <button class="btn-terracotta" style="width: 100%; justify-content: center;" onclick="closeModal('orderSuccessModal'); switchPage('landingView');">
-        Back to Landing Page
-      </button>
+
+      <div style="background-color: var(--color-cream-bg); border: 1px solid var(--color-border); border-radius: var(--radius-md); padding: 14px 18px; margin-bottom: 20px; font-size: 0.92rem; text-align: left;">
+        <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+          <span style="color: var(--color-text-muted);">Order ID:</span>
+          <strong id="successOrderId" style="color: var(--color-forest-dark); font-family: monospace; font-size: 0.98rem;">#VL-2026-00000</strong>
+        </div>
+        <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+          <span style="color: var(--color-text-muted);">Amount Paid:</span>
+          <strong id="successOrderTotal" style="color: var(--color-terracotta); font-weight: 800;">₹0</strong>
+        </div>
+        <div style="display: flex; justify-content: space-between;">
+          <span style="color: var(--color-text-muted);">Trees Planted:</span>
+          <strong id="successOrderTrees" style="color: var(--color-forest-medium); font-weight: 800;">0 Saplings</strong>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 10px;">
+        <button class="btn-forest" style="width: 100%; justify-content: center;" id="successViewInvoiceBtn">
+          <i class="fa-solid fa-file-invoice"></i> View & Print Invoice
+        </button>
+        <button class="btn-terracotta" style="width: 100%; justify-content: center;" onclick="closeModal('orderSuccessModal'); switchPage('ordersView');">
+          <i class="fa-solid fa-clock-rotate-left"></i> View in Past Orders
+        </button>
+        <button class="btn-outline" style="width: 100%; justify-content: center;" onclick="closeModal('orderSuccessModal'); switchPage('landingView');">
+          Continue Shopping
+        </button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Re-usable Eco Invoice Modal -->
+  <div class="modal-overlay" id="invoiceModal">
+    <div class="modal-card invoice-modal-card">
+      <button class="modal-close-btn" onclick="closeModal('invoiceModal')" aria-label="Close Invoice Modal"><i class="fa-solid fa-xmark"></i></button>
+      
+      <!-- Printable Invoice Area -->
+      <div id="invoicePrintableArea">
+        <!-- Rendered dynamically by app.js openInvoiceModal() -->
+      </div>
+
+      <!-- Action Buttons Bar (Hidden during printing) -->
+      <div class="invoice-actions-footer">
+        <button class="btn-forest btn-print-pdf" onclick="printInvoice()">
+          <i class="fa-solid fa-file-pdf"></i> Print / Download PDF
+        </button>
+        <button class="btn-terracotta" id="invoiceDownloadBtn" onclick="downloadCurrentInvoice()">
+          <i class="fa-solid fa-download"></i> Download Receipt (.TXT)
+        </button>
+        <button class="btn-outline" onclick="closeModal('invoiceModal')">
+          Close
+        </button>
+      </div>
     </div>
   </div>
 
